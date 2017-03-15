@@ -179,6 +179,7 @@ class Plugin {
 		include( ELEMENTOR_PATH . 'includes/css-file/post-css-file.php' );
 		include( ELEMENTOR_PATH . 'includes/css-file/global-css-file.php' );
 		include( ELEMENTOR_PATH . 'includes/conditions.php' );
+		include( ELEMENTOR_PATH . 'includes/shapes.php' );
 
 		if ( is_admin() ) {
 			include( ELEMENTOR_PATH . 'includes/admin.php' );
@@ -220,7 +221,7 @@ class Plugin {
 		$cpt_support = get_option( 'elementor_cpt_support', [ 'page', 'post' ] );
 
 		foreach ( $cpt_support as $cpt_slug ) {
-			add_post_type_support( $cpt_slug, [ 'elementor', 'revisions' ] );
+			add_post_type_support( $cpt_slug, 'elementor' );
 		}
 	}
 

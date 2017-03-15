@@ -128,6 +128,24 @@ abstract class Element_Base {
 		return self::_get_items( $stack['controls'], $control_id );
 	}
 
+	public function get_active_controls() {
+		$controls = $this->get_controls();
+
+		$settings = $this->get_settings();
+
+		$active_controls = array_reduce( array_keys( $controls ), function ( $active_controls, $control_key ) use ( $controls, $settings ) {
+			$control = $controls[ $control_key ];
+
+			if ( $this->is_control_visible( $control, $settings ) ) {
+				$active_controls[ $control_key ] = $control;
+			}
+
+			return $active_controls;
+		}, [] );
+
+		return $active_controls;
+	}
+
 	public function add_control( $id, array $args, $overwrite = false ) {
 		if ( empty( $args['type'] ) || ! in_array( $args['type'], [ Controls_Manager::SECTION, Controls_Manager::WP_WIDGET ] ) ) {
 			if ( null !== $this->_current_section ) {
@@ -181,7 +199,7 @@ abstract class Element_Base {
 
 	public final function get_style_controls( $controls = null ) {
 		if ( null === $controls ) {
-			$controls = $this->get_controls();
+			$controls = $this->get_active_controls();
 		}
 
 		$style_controls = [];
@@ -200,7 +218,7 @@ abstract class Element_Base {
 	}
 
 	public final function get_class_controls() {
-		return array_filter( $this->get_controls(), function( $control ) {
+		return array_filter( $this->get_active_controls(), function( $control ) {
 			return ( isset( $control['prefix_class'] ) );
 		} );
 	}
@@ -302,6 +320,16 @@ abstract class Element_Base {
 		return self::_get_items( $this->_settings, $setting );
 	}
 
+	public function get_active_settings() {
+		$settings = $this->get_settings();
+
+		$active_settings = array_intersect_key( $settings, $this->get_active_controls() );
+
+		$settings_mask = array_fill_keys( array_keys( $settings ), null );
+
+		return array_merge( $settings_mask, $active_settings );
+	}
+
 	public function get_children() {
 		if ( null === $this->_children ) {
 			$this->_init_children();
@@ -382,9 +410,18 @@ abstract class Element_Base {
 				$instance_value = $instance_value[ $condition_sub_key ];
 			}
 
-			// If it's a non empty array - check if the conditionValue contains the controlValue,
-			// otherwise check if they are equal. ( and give the ability to check if the value is an empty array )
-			$is_contains = ( is_array( $condition_value ) && ! empty( $condition_value ) ) ? in_array( $instance_value, $condition_value ) : $instance_value === $condition_value;
+			/**
+			 * If the $condition_value is a non empty array - check if the $condition_value contains the $instance_value,
+			 * If the $instance_value is a non empty array - check if the $instance_value contains the $condition_value
+			 * otherwise check if they are equal. ( and give the ability to check if the value is an empty array )
+			 **/
+			if ( is_array( $condition_value ) && ! empty( $condition_value ) ) {
+				$is_contains = in_array( $instance_value, $condition_value );
+			} elseif ( is_array( $instance_value ) && ! empty( $instance_value ) ) {
+				$is_contains = in_array( $condition_value, $instance_value );
+			} else {
+				$is_contains = $instance_value === $condition_value;
+			}
 
 			if ( $is_negative_condition && $is_contains || ! $is_negative_condition && ! $is_contains ) {
 				return false;
@@ -450,6 +487,8 @@ abstract class Element_Base {
 		$this->enqueue_scripts();
 
 		do_action( 'elementor/frontend/' . static::get_type() . '/before_render', $this );
+
+		$this->_add_render_attributes();
 
 		$this->before_render();
 
@@ -610,6 +649,40 @@ abstract class Element_Base {
 	 */
 	public function is_type_instance() {
 		return $this->_is_type_instance;
+	}
+
+	public function get_frontend_settings_keys() {
+		return [];
+	}
+
+	protected function _add_render_attributes() {
+		$id = $this->get_id();
+
+		$this->add_render_attribute( '_wrapper', 'data-id', $id );
+
+		$this->add_render_attribute( '_wrapper', 'class', [
+			'elementor-element',
+			'elementor-element-' . $id,
+		] );
+
+		$settings = $this->get_active_settings();
+
+		foreach ( self::get_class_controls() as $control ) {
+			if ( empty( $settings[ $control['name'] ] ) )
+				continue;
+
+			$this->add_render_attribute( '_wrapper', 'class', $control['prefix_class'] . $settings[ $control['name'] ] );
+		}
+
+		if ( ! empty( $settings['_element_id'] ) ) {
+			$this->add_render_attribute( '_wrapper', 'id', trim( $settings['_element_id'] ) );
+		}
+
+		if ( ! Plugin::$instance->editor->is_edit_mode() ) {
+			$frontend_settings = array_intersect_key( $settings, array_flip( $this->get_frontend_settings_keys() ) );
+
+			$this->add_render_attribute( '_wrapper', 'data-settings', wp_json_encode( $frontend_settings ) );
+		}
 	}
 
 	protected function render() {}
